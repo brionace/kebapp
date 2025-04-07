@@ -330,6 +330,11 @@ module.exports = {
     }
   };
 
+  const url =
+    process.env.NODE_ENV === "production"
+      ? "https://kebapp-sage.vercel.app" // Vercel URL for production
+      : "http://localhost:5001";
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="md:flex md:items-center md:justify-between mb-8">
@@ -362,7 +367,7 @@ module.exports = {
           <>
             <div className="aspect-w-16 aspect-h-9 bg-gray-100 rounded-lg mb-6">
               <iframe
-                src={`http://localhost:5173/api/preview/${projectId}`}
+                src={`${url}/api/preview/${projectId}`}
                 className="w-full h-full rounded-lg"
                 title="Preview"
               />
