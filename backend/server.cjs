@@ -33,6 +33,7 @@ app.use(express.json()); // To parse JSON request bodies
 //   "/api/preview",
 //   express.static(path.resolve(__dirname, "builds"))
 // );
+
 app.use("/api/preview/:projectId", (req, res, next) => {
   const projectId = req.params.projectId; // Extract projectId from the URL
   const userBuildDir = path.resolve(__dirname, "builds", projectId);
