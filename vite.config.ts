@@ -21,7 +21,7 @@ export default defineConfig({
       "/api": {
         target:
           process.env.NODE_ENV === "production"
-            ? "https://kebapp-sage.vercel.app" // Vercel URL for production
+            ? "https://main.dylhh5rrhpcp1.amplifyapp.com" // Vercel URL for production
             : "http://localhost:5001", // TODO: fix
         changeOrigin: true,
         // secure: false,
