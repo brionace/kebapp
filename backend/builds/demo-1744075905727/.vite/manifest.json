@@ -1,0 +1,11 @@
+{
+  "bundle.tsx": {
+    "file": "assets/bundle-DAqROWEB.js",
+    "name": "bundle",
+    "src": "bundle.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/bundle-BSxFgy0l.css"
+    ]
+  }
+}
