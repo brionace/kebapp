@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 5001;
 
 // Enable CORS for all routes
 app.use(cors());
+
 // Restrict CORS to a specific origin (uncomment if needed)
 // app.use(
 //   cors({
@@ -31,12 +32,12 @@ app.use(express.json()); // To parse JSON request bodies
 // Serve the built files
 // app.use(
 //   "/api/preview",
-//   express.static(path.resolve(__dirname, "builds"))
+//   express.static(path.resolve(__dirname, "projects"))
 // );
 
 app.use("/api/preview/:projectId", (req, res, next) => {
   const projectId = req.params.projectId; // Extract projectId from the URL
-  const userBuildDir = path.resolve(__dirname, "builds", projectId);
+  const userBuildDir = path.resolve(__dirname, "projects", projectId);
 
   if (!fs.existsSync(userBuildDir)) {
     return res
@@ -51,7 +52,7 @@ app.use("/api/preview/:projectId", (req, res, next) => {
 app.post("/api/build", async (req, res) => {
   try {
     const projectId = req.body.projectId || uuidv4(); // Use projectId from the request or generate a UUID
-    const outputDir = path.resolve(__dirname, "builds", projectId);
+    const outputDir = path.resolve(__dirname, "projects", projectId);
     const entryFile = path.resolve(__dirname, "bundle.tsx");
     const htmlFile = path.resolve(outputDir, "index.html");
 
