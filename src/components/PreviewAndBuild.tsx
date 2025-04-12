@@ -65,7 +65,7 @@ export function PreviewAndBuild() {
   const template = TEMPLATES.find((t) => t.category === templateType);
   const url =
     process.env.NODE_ENV === "production"
-      ? "http://kebapps.s3-website.us-east-2.amazonaws.com/" // Vercel URL for production
+      ? "https://kebapps.s3-website.us-east-2.amazonaws.com/" // Vercel URL for production
       : "http://localhost:5001";
   // const url = "https://twx7oosbtf.execute-api.us-east-2.amazonaws.com/default";
 
