@@ -63,6 +63,11 @@ export function PreviewAndBuild() {
   const templateConfig = location.state?.config;
   const templateType = location.state?.templateType;
   const template = TEMPLATES.find((t) => t.category === templateType);
+  const url =
+    process.env.NODE_ENV === "production"
+      ? "http://kebapps.s3-website.us-east-2.amazonaws.com/" // Vercel URL for production
+      : "http://localhost:5001";
+  // const url = "https://twx7oosbtf.execute-api.us-east-2.amazonaws.com/default";
 
   useEffect(() => {
     const fetchBuildResult = async () => {
@@ -111,7 +116,7 @@ export function PreviewAndBuild() {
 
     try {
       // Trigger the build process on the server
-      const response = await fetch("/api/build", {
+      const response = await fetch(`${url}/api/build`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -329,11 +334,6 @@ module.exports = {
         return "Next.js";
     }
   };
-
-  const url =
-    process.env.NODE_ENV === "production"
-      ? "https://main.dylhh5rrhpcp1.amplifyapp.com" // Vercel URL for production
-      : "http://localhost:5001";
 
   return (
     <div className="max-w-4xl mx-auto">

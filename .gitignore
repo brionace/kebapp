@@ -26,3 +26,8 @@ dist-ssr
 
 # Builds
 backend/projects/*
+backend/bundle*
+
+# Environment variables
+.env
+.env.*

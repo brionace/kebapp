@@ -1,13 +1,38 @@
+require("dotenv").config();
 const express = require("express");
+const serverless = require("serverless-http");
 const cors = require("cors");
 const { build } = require("vite");
 const path = require("path");
 const fs = require("fs");
 const JSZip = require("jszip");
 const { v4: uuidv4 } = require("uuid");
+const AWS = require("aws-sdk");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const bucketName = "kebapps";
+const dirName = process.env.NODE_ENV === "production" ? "/tmp" : __dirname;
+
+const SESConfig = {
+  apiVersion: "latest",
+  region: process.env.REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+};
+
+AWS.config.update(SESConfig);
+
+// Debug credentials
+AWS.config.getCredentials((err) => {
+  if (err) {
+    console.error("Error loading credentials:", err);
+  } else {
+    console.log("Credentials loaded successfully:", AWS.config.credentials);
+  }
+});
+
+const s3 = new AWS.S3();
 
 // Enable CORS for all routes
 app.use(cors());
@@ -37,7 +62,7 @@ app.use(express.json()); // To parse JSON request bodies
 
 app.use("/api/preview/:projectId", (req, res, next) => {
   const projectId = req.params.projectId; // Extract projectId from the URL
-  const userBuildDir = path.resolve(__dirname, "projects", projectId);
+  const userBuildDir = path.resolve(dirName, "projects", projectId);
 
   if (!fs.existsSync(userBuildDir)) {
     return res
@@ -52,8 +77,11 @@ app.use("/api/preview/:projectId", (req, res, next) => {
 app.post("/api/build", async (req, res) => {
   try {
     const projectId = req.body.projectId || uuidv4(); // Use projectId from the request or generate a UUID
-    const outputDir = path.resolve(__dirname, "projects", projectId);
-    const entryFile = path.resolve(__dirname, "bundle.tsx");
+    const outputDir = path.resolve(dirName, "projects", projectId);
+
+    const bundleTSX = `bundle-${projectId}.tsx`;
+    const bundleFile = path.resolve(dirName, bundleTSX);
+
     const htmlFile = path.resolve(outputDir, "index.html");
 
     // Ensure the build directory exists
@@ -83,16 +111,16 @@ app.post("/api/build", async (req, res) => {
       const root = ReactDOM.createRoot(rootElement); // Use createRoot for React 18+
       root.render(React.createElement(TemplateComponent, { config }));
     `;
-    fs.writeFileSync(entryFile, entryFileContent, "utf8");
+    fs.writeFileSync(bundleFile, entryFileContent, "utf8");
 
     // Use Vite to build the static files
     await build({
-      root: path.resolve(__dirname),
+      root: path.resolve(dirName),
       build: {
         outDir: outputDir,
         manifest: true,
         rollupOptions: {
-          input: entryFile,
+          input: bundleFile,
         },
       },
     });
@@ -106,18 +134,20 @@ app.post("/api/build", async (req, res) => {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 
     // Get the output file name for the entry file
-    const bundleFileName = manifest["bundle.tsx"]?.file;
-    const cssFileName = manifest["bundle.tsx"]?.css[0];
+    const bundleFileName = manifest[bundleTSX]?.file;
+    const cssFileName = manifest[bundleTSX]?.css[0];
     if (!bundleFileName) {
       throw new Error("Bundle file not found in manifest.json");
     }
 
     // Check if the entry file exists, and create it if it doesn't
-    const htmlContent = `
+    fs.writeFileSync(
+      htmlFile,
+      `
         <!DOCTYPE html>
         <html lang="en">
           <head>
-            <meta charset="UTF-8">
+            <meta http-equiv="content-type" content="text/html; charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>${req.body.templateConfig.title || "Generated Page"}</title>
             <link rel="stylesheet" href="${cssFileName}" />
@@ -127,11 +157,71 @@ app.post("/api/build", async (req, res) => {
             <script type="module" src="./${bundleFileName}"></script>
           </body>
         </html>
-      `;
-    fs.writeFileSync(htmlFile, htmlContent, "utf8"); // Create the file with the content
+      `,
+      "utf8"
+    ); // Create the file with the content
 
-    console.log(`Created entry file at ${entryFile}`);
+    console.log(`Created entry file at ${bundleFile}`);
     console.log(`Created HTML file at ${htmlFile}`);
+
+    // Get file paths
+    const filePaths = [];
+    const getFilePaths = (dir) => {
+      fs.readdirSync(dir).forEach(function (name) {
+        const filePath = path.join(dir, name);
+        const stat = fs.statSync(filePath);
+        if (stat.isFile()) {
+          filePaths.push(filePath);
+        } else if (stat.isDirectory()) {
+          getFilePaths(filePath);
+        }
+      });
+    };
+
+    getFilePaths(outputDir);
+
+    // Map file extensions to MIME types
+    const getContentType = (filename) => {
+      const ext = filename.split(".").pop().toLowerCase();
+      const mimeTypes = {
+        html: "text/html",
+        css: "text/css",
+        js: "application/javascript",
+        png: "image/png",
+        jpg: "image/jpeg",
+        json: "application/json",
+      };
+      return mimeTypes[ext] || "application/octet-stream";
+    };
+
+    // Upload to S3
+    const uploadToS3 = (dir, path) => {
+      return new Promise((resolve, reject) => {
+        const key = path.split(`${dir}/`)[1];
+        const params = {
+          Bucket: bucketName,
+          Key: `${projectId}/${key}`,
+          Body: fs.readFileSync(path),
+          ContentType: getContentType(key), // Critical for rendering!
+        };
+        s3.putObject(params, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            console.log(`uploaded ${params.Key} to ${params.Bucket}`);
+            resolve(path);
+          }
+        });
+      });
+    };
+
+    const uploadPromises = filePaths.map((path) => uploadToS3(outputDir, path));
+    Promise.all(uploadPromises)
+      .then((result) => {
+        console.log("uploads complete");
+        console.log(result);
+      })
+      .catch((err) => console.error(err));
 
     res
       .status(200)
@@ -146,7 +236,7 @@ app.post("/api/build", async (req, res) => {
 app.get("/api/download", async (req, res) => {
   try {
     const zip = new JSZip();
-    const outputDir = path.resolve(__dirname, "build");
+    const outputDir = path.resolve(dirName, "build");
 
     // Add files to the ZIP
     const addFilesToZip = (dir, folder) => {
@@ -179,4 +269,17 @@ app.get("/api/download", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
+});
+
+// Export the app for serverless deployment
+module.exports.handler = serverless(app, {
+  // Custom options for serverless-http
+  request: (req, res) => {
+    // Custom request handling logic
+    console.log("Request received:", req.method, req.url);
+  },
+  response: (req, res) => {
+    // Custom response handling logic
+    console.log("Response sent:", res.statusCode);
+  },
 });
