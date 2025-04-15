@@ -1,52 +1,47 @@
-const express = require("express");
-const serverless = require("serverless-http");
-const cors = require("cors");
-const esbuild = require("esbuild");
-const path = require("path");
-const fs = require("fs");
-const JSZip = require("jszip");
-const { v4: uuidv4 } = require("uuid");
-const AWS = require("aws-sdk");
-const s3 = new AWS.S3();
+import dotenv from "dotenv";
+import os from "os";
+import fsPromises from "fs/promises";
+import express from "express";
+import serverless from "serverless-http";
+import cors from "cors";
+import { build } from "vite";
+import { fileURLToPath } from "url";
+import path from "path";
+import fs from "fs";
+import JSZip from "jszip";
+import { v4 as uuidv4 } from "uuid";
+import AWS from "@aws-sdk/client-s3";
+
+const __filename = fileURLToPath(import.meta.url); // Get the current file's absolute path
+const __dirname = path.dirname(__filename); // Get the directory of the current file
+
+dotenv.config();
 
 const app = express();
+const PORT = process.env.PORT || 5001;
 
+const s3 = new AWS.S3();
+const bucketName = "kebapps";
+
+// Enable CORS for all routes
 app.use(cors());
 app.use(express.json()); // To parse JSON request bodies
-
-// Serve the built files
-app.use("/api/preview/:projectId", (req, res, next) => {
-  const projectId = req.params.projectId; // Extract projectId from the URL
-  const userBuildDir = path.resolve("/tmp", "projects", projectId);
-
-  if (!fs.existsSync(userBuildDir)) {
-    return res
-      .status(404)
-      .send({ error: "Build not found for the specified project" });
-  }
-
-  express.static(userBuildDir)(req, res, next); // Serve static files from the user's build directory
-});
-
-// Endpoint to trigger the build process
 app.post("/api/build", async (req, res) => {
   try {
     const projectId = req.body.projectId || uuidv4(); // Use projectId from the request or generate a UUID
-    const outputDir = path.resolve("/tmp", "projects", projectId);
-    const entryFile = path.resolve("/tmp", "bundle.tsx");
+    // Create a temporary directory for the build
+    const tempDir = path.join(os.tmpdir(), `vite-build-${projectId}`);
+    await fsPromises.mkdir(tempDir, { recursive: true });
+
+    const outputDir = path.resolve(tempDir, "projects", projectId);
     const htmlFile = path.resolve(outputDir, "index.html");
 
-    // Ensure the build directory exists
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true }); // Create the directory if it doesn't exist
-    }
-
-    // Write the entry.tsx file
+    // Dynamically generate the entry file content as a string
     const entryFileContent = `
       import React from "react";
       import ReactDOM from "react-dom/client";
-      import { TEMPLATE_REGISTRY } from "../src/templates/index";
-      import "../src/index.css"; // Import Tailwind CSS
+      import { TEMPLATE_REGISTRY } from "${__dirname}/src/templates/index.ts";
+      import "${__dirname}/src/index.css"; // Import Tailwind CSS
 
       const config = ${JSON.stringify(req.body.templateConfig)};
       const TemplateComponent = TEMPLATE_REGISTRY["${req.body.templateId}"];
@@ -63,116 +58,145 @@ app.post("/api/build", async (req, res) => {
       const root = ReactDOM.createRoot(rootElement); // Use createRoot for React 18+
       root.render(React.createElement(TemplateComponent, { config }));
     `;
-    fs.writeFileSync(entryFile, entryFileContent, "utf8");
 
-    // Use esbuild to bundle the static files
-    await esbuild.build({
-      entryPoints: [entryFile],
-      bundle: true,
-      outfile: path.resolve(outputDir, "bundle.js"),
-      minify: true,
-      platform: "browser",
-      target: ["es2017"],
-    });
+    // Write the entry file to the temporary directory
+    const entryFilePath = path.join(tempDir, "entry.tsx");
+    await fsPromises.writeFile(entryFilePath, entryFileContent, "utf8");
 
-    // Create the HTML file
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${req.body.templateConfig.title || "Generated Page"}</title>
-          <link rel="stylesheet" href="../src/index.css" />
-        </head>
-        <body>
-          <div id="root"></div>
-          <script src="./bundle.js"></script>
-        </body>
-      </html>
-    `;
-    fs.writeFileSync(htmlFile, htmlContent, "utf8");
-
-    console.log(`Created entry file at ${entryFile}`);
-    console.log(`Created HTML file at ${htmlFile}`);
-
-    // Upload files to S3
-    const bucketName = "kebapps";
-
-    const uploadToS3 = async (key, filePath) => {
-      const fileContent = fs.readFileSync(filePath);
-      await s3
-        .upload({
-          Bucket: bucketName,
-          Key: key,
-          Body: fileContent,
-        })
-        .promise();
-      console.log(`Uploaded ${key} to S3`);
-    };
-
-    // Upload bundle.js and index.html
-    await uploadToS3(
-      `projects/${projectId}/bundle.js`,
-      path.resolve(outputDir, "bundle.js")
-    );
-    await uploadToS3(`projects/${projectId}/index.html`, htmlFile);
-
-    res.status(200).send({
-      message: "Build completed and uploaded to S3",
-      projectId,
-      s3Urls: {
-        bundle: `https://${bucketName}.s3.amazonaws.com/projects/${projectId}/bundle.js`,
-        html: `https://${bucketName}.s3.amazonaws.com/projects/${projectId}/index.html`,
+    // Perform the Vite build
+    await build({
+      root: tempDir, // Use the temporary directory as the root
+      build: {
+        outDir: outputDir, // Output directory for the build
+        manifest: true, // Generate a manifest file
+        rollupOptions: {
+          input: entryFilePath, // Use the dynamically created entry file
+          external: ["react", "react-dom", "react-dom/client"], // Exclude React and ReactDOM from the bundle
+        },
       },
     });
-  } catch (error) {
-    console.error("Build Error:", error);
-    res.status(500).send({ error: "Build failed", details: error.message });
-  }
-});
 
-// Endpoint to download the build as a ZIP file
-app.get("/api/download", async (req, res) => {
-  try {
-    const zip = new JSZip();
-    const outputDir = path.resolve("/tmp", "build");
+    // Clean up the temporary directory (optional)
+    await fsPromises.rm(tempDir, { recursive: true, force: true });
 
-    // Add files to the ZIP
-    const addFilesToZip = (dir, folder) => {
-      const files = fs.readdirSync(dir);
-      files.forEach((file) => {
-        const filePath = path.join(dir, file);
-        const stats = fs.statSync(filePath);
+    // Read the manifest.json file AFTER the build process
+    const manifestPath = path.resolve(outputDir + "/.vite", "manifest.json");
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error("Manifest file not found after build");
+    }
 
-        if (stats.isDirectory()) {
-          const subFolder = folder.folder(file);
-          addFilesToZip(filePath, subFolder);
-        } else {
-          folder.file(file, fs.readFileSync(filePath));
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+
+    // Get the output file name for the entry file
+    const bundleFileName = manifest[bundleTSX]?.file;
+    const cssFileName = manifest[bundleTSX]?.css[0];
+    if (!bundleFileName) {
+      throw new Error("Bundle file not found in manifest.json");
+    }
+
+    // Check if the entry file exists, and create it if it doesn't
+    fs.writeFileSync(
+      htmlFile,
+      `
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta http-equiv="content-type" content="text/html; charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>${req.body.templateConfig.title || "Generated Page"}</title>
+            <link rel="stylesheet" href="${cssFileName}" />
+          </head>
+          <body>
+            <div id="root"></div>
+            <script type="module" src="./${bundleFileName}"></script>
+          </body>
+        </html>
+      `,
+      "utf8"
+    ); // Create the file with the content
+
+    console.log(`Created HTML file at ${htmlFile}`);
+
+    // Get file paths
+    const filePaths = [];
+    const getFilePaths = (dir) => {
+      fs.readdirSync(dir).forEach(function (name) {
+        const filePath = path.join(dir, name);
+        const stat = fs.statSync(filePath);
+        if (stat.isFile()) {
+          filePaths.push(filePath);
+        } else if (stat.isDirectory()) {
+          getFilePaths(filePath);
         }
       });
     };
 
-    addFilesToZip(outputDir, zip);
+    getFilePaths(outputDir);
 
-    // Generate the ZIP file
-    const content = await zip.generateAsync({ type: "nodebuffer" });
-    res.setHeader("Content-Disposition", "attachment; filename=build.zip");
-    res.setHeader("Content-Type", "application/zip");
-    res.send(content);
+    // Map file extensions to MIME types
+    const getContentType = (filename) => {
+      const ext = filename.split(".").pop().toLowerCase();
+      const mimeTypes = {
+        html: "text/html",
+        css: "text/css",
+        js: "application/javascript",
+        png: "image/png",
+        jpg: "image/jpeg",
+        json: "application/json",
+      };
+      return mimeTypes[ext] || "application/octet-stream";
+    };
+
+    // Upload to S3
+    const uploadToS3 = (dir, path) => {
+      return new Promise((resolve, reject) => {
+        const key = path.split(`${dir}/`)[1];
+        const params = {
+          Bucket: bucketName,
+          Key: `${projectId}/${key}`,
+          Body: fs.readFileSync(path),
+          ContentType: getContentType(key), // Critical for rendering!
+        };
+        s3.putObject(params, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            console.log(`uploaded ${params.Key} to ${params.Bucket}`);
+            resolve(path);
+          }
+        });
+      });
+    };
+
+    const uploadPromises = filePaths.map((path) => uploadToS3(outputDir, path));
+    Promise.all(uploadPromises)
+      .then((result) => {
+        console.log("uploads complete");
+        console.log(result);
+      })
+      .catch((err) => console.error(err));
+
+    res
+      .status(200)
+      .send({ message: "Build completed successfully", projectId });
   } catch (error) {
-    console.error("Error generating ZIP:", error);
-    res.status(500).send({ error: "Failed to generate ZIP" });
+    console.error("Build Error:", error);
+    res.status(500).send({ error: "Build failed" });
   }
 });
 
-// Export the app for serverless deployment
-module.exports.handler = serverless(app, {
+export const handler = serverless(app, {
+  // Custom options for serverless-http
   request: (req, res) => {
+    // Custom request handling logic
     console.log("Request received:", req.method, req.url);
   },
   response: (req, res) => {
+    // Custom response handling logic
     console.log("Response sent:", res.statusCode);
   },
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running at http://localhost:${PORT}`);
 });

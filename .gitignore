@@ -26,8 +26,10 @@ dist-ssr
 
 # Builds
 backend/projects/*
-backend/bundle*
+backend/bundle-*
 
 # Environment variables
 .env
 .env.*
+
+.bolt

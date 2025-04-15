@@ -8,6 +8,12 @@ export const TEMPLATE_REGISTRY = {
   "charity-landing": CharityLanding,
   "classic-blog": ClassicBlog,
   "modern-landing": ClassicLanding,
-} as {
-  [key: string]: React.FC<unknown>;
 };
+// export const TEMPLATE_REGISTRY = {
+//   "band-landing": BandLanding,
+//   "charity-landing": CharityLanding,
+//   "classic-blog": ClassicBlog,
+//   "modern-landing": ClassicLanding,
+// } as {
+//   [key: string]: React.FC<unknown>;
+// };

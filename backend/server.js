@@ -1,36 +1,57 @@
-require("dotenv").config();
-const express = require("express");
-const serverless = require("serverless-http");
-const cors = require("cors");
-const { build } = require("vite");
-const path = require("path");
-const fs = require("fs");
-const JSZip = require("jszip");
-const { v4: uuidv4 } = require("uuid");
-const AWS = require("aws-sdk");
+// require("dotenv").config();
+// const express = require("express");
+// const serverless = require("serverless-http");
+// const cors = require("cors");
+// const { build } = require("vite");
+// const path = require("path");
+// const fs = require("fs");
+// const JSZip = require("jszip");
+// const { v4: uuidv4 } = require("uuid");
+// const AWS = require("@aws-sdk/client-s3");
+import dotenv from "dotenv";
+import fs from "fs";
+import express from "express";
+import serverless from "serverless-http";
+import cors from "cors";
+import { build } from "vite";
+import path from "path";
+import JSZip from "jszip";
+import { v4 as uuidv4 } from "uuid";
+import AWS from "@aws-sdk/client-s3";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 const bucketName = "kebapps";
-const dirName = process.env.NODE_ENV === "production" ? "/tmp" : __dirname;
 
-const SESConfig = {
-  apiVersion: "latest",
-  region: process.env.REGION,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-};
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// const dirName =
+//   process.env.NODE_ENV === "production"
+//     ? "https://kebapps.s3-website.us-east-2.amazonaws.com/tmp"
+//     : __dirname;
+const dirName = __dirname;
 
-AWS.config.update(SESConfig);
+// const SESConfig = {
+//   apiVersion: "latest",
+//   region: process.env.REGION,
+//   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+//   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+// };
 
-// Debug credentials
-AWS.config.getCredentials((err) => {
-  if (err) {
-    console.error("Error loading credentials:", err);
-  } else {
-    console.log("Credentials loaded successfully:", AWS.config.credentials);
-  }
-});
+// AWS.config.update(SESConfig);
+
+// // Debug credentials
+// AWS.config.getCredentials((err) => {
+//   if (err) {
+//     console.error("Error loading credentials:", err);
+//   } else {
+//     console.log("Credentials loaded successfully:", AWS.config.credentials);
+//   }
+// });
 
 const s3 = new AWS.S3();
 
@@ -77,10 +98,11 @@ app.use("/api/preview/:projectId", (req, res, next) => {
 app.post("/api/build", async (req, res) => {
   try {
     const projectId = req.body.projectId || uuidv4(); // Use projectId from the request or generate a UUID
-    const outputDir = path.resolve(dirName, "projects", projectId);
+
+    const outputDir = path.resolve(__dirname, "projects", projectId);
 
     const bundleTSX = `bundle-${projectId}.tsx`;
-    const bundleFile = path.resolve(dirName, bundleTSX);
+    const bundleFile = path.resolve(__dirname, bundleTSX);
 
     const htmlFile = path.resolve(outputDir, "index.html");
 
@@ -115,7 +137,7 @@ app.post("/api/build", async (req, res) => {
 
     // Use Vite to build the static files
     await build({
-      root: path.resolve(dirName),
+      root: path.resolve(__dirname),
       build: {
         outDir: outputDir,
         manifest: true,
@@ -161,8 +183,8 @@ app.post("/api/build", async (req, res) => {
       "utf8"
     ); // Create the file with the content
 
-    console.log(`Created entry file at ${bundleFile}`);
-    console.log(`Created HTML file at ${htmlFile}`);
+    // console.log(`Created entry file at ${bundleFile}`);
+    // console.log(`Created HTML file at ${htmlFile}`);
 
     // Get file paths
     const filePaths = [];
@@ -177,9 +199,7 @@ app.post("/api/build", async (req, res) => {
         }
       });
     };
-
     getFilePaths(outputDir);
-
     // Map file extensions to MIME types
     const getContentType = (filename) => {
       const ext = filename.split(".").pop().toLowerCase();
@@ -193,7 +213,6 @@ app.post("/api/build", async (req, res) => {
       };
       return mimeTypes[ext] || "application/octet-stream";
     };
-
     // Upload to S3
     const uploadToS3 = (dir, path) => {
       return new Promise((resolve, reject) => {
@@ -271,8 +290,7 @@ app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
 
-// Export the app for serverless deployment
-module.exports.handler = serverless(app, {
+export const handler = serverless(app, {
   // Custom options for serverless-http
   request: (req, res) => {
     // Custom request handling logic

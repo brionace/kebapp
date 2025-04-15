@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"pnpm run server\" \"pnpm run client\"",
-    "server": "node backend/server.cjs",
+    "server": "node -e \"process.env.NODE_ENV === 'production' ? require('./backend/index.js') : require('./backend/server.js')\"",
     "client": "vite",
     "start": "concurrently \"pnpm run server\" \"pnpm run client\"",
     "build": "vite build",
@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.787.0",
     "@radix-ui/react-popover": "^1.1.6",
     "@supabase/supabase-js": "^2.49.4",
-    "aws-sdk": "^2.1692.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
