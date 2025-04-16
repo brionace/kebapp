@@ -1,6 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const port = process.env.PORT || 5000; // Default port for local development
+const url =
+  process.env.NODE_ENV === "production"
+    ? `http://172.31.7.229:${port}` // Vercel URL for production
+    : `http://localhost:${port}`;
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -21,7 +27,7 @@ export default defineConfig({
     port: 80,
     proxy: {
       "/api": {
-        target: `http://localhost:${process.env.PORT || 5000}`, // TODO: fix
+        target: url,
         changeOrigin: true,
         secure: false,
         ws: true,
