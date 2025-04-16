@@ -1,17 +1,7 @@
-// require("dotenv").config();
-// const express = require("express");
-// const serverless = require("serverless-http");
-// const cors = require("cors");
-// const { build } = require("vite");
-// const path = require("path");
-// const fs = require("fs");
-// const JSZip = require("jszip");
-// const { v4: uuidv4 } = require("uuid");
-// const AWS = require("@aws-sdk/client-s3");
 import dotenv from "dotenv";
 import fs from "fs";
 import express from "express";
-import serverless from "serverless-http";
+// import serverless from "serverless-http";
 import cors from "cors";
 import { build } from "vite";
 import path from "path";
@@ -24,7 +14,7 @@ import { dirname } from "path";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 const bucketName = "kebapps";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -290,14 +280,14 @@ app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
 
-export const handler = serverless(app, {
-  // Custom options for serverless-http
-  request: (req, res) => {
-    // Custom request handling logic
-    console.log("Request received:", req.method, req.url);
-  },
-  response: (req, res) => {
-    // Custom response handling logic
-    console.log("Response sent:", res.statusCode);
-  },
-});
+// export const handler = serverless(app, {
+//   // Custom options for serverless-http
+//   request: (req, res) => {
+//     // Custom request handling logic
+//     console.log("Request received:", req.method, req.url);
+//   },
+//   response: (req, res) => {
+//     // Custom response handling logic
+//     console.log("Response sent:", res.statusCode);
+//   },
+// });

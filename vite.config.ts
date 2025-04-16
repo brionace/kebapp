@@ -17,12 +17,14 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
+    port: 80,
     proxy: {
       "/api": {
-        target: "http://localhost:5001", // TODO: fix
+        target: `http://localhost:${process.env.PORT || 5000}`, // TODO: fix
         changeOrigin: true,
-        // secure: false,
-        // ws: true,
+        secure: false,
+        ws: true,
       },
     },
   },
