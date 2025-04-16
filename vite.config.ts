@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const port = process.env.PORT || 5000; // Default port for local development
+const port = process.env.PORT || 3000; // Default port for local development
 const url =
   process.env.NODE_ENV === "production"
     ? `http://172.31.7.229:${port}` // Vercel URL for production

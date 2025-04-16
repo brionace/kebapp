@@ -14,7 +14,7 @@ import { dirname } from "path";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 const bucketName = "kebapps";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -276,7 +276,11 @@ app.get("/api/download", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, (err) => {
+  if (err) {
+    console.error("Failed to start server:", err);
+    process.exit(1); // Exit with a non-zero code if there's an error
+  }
   console.log(`Server is running at http://localhost:${PORT}`);
 });
 
